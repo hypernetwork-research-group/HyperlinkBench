@@ -145,40 +145,56 @@ class MotifHypergraphNegativeSampler(HypergraphNegativeSampler):
         return self
     
     def generate(self, edge_index: Tensor) -> HypergraphNegativeSamplerResult:
+        num_hyperedges = edge_index[1].max().item() + 1
         sparse = torch.sparse_coo_tensor(
             edge_index,
             torch.ones(edge_index.shape[1], device=self.device),
-            (self.num_node, edge_index.max().item() + 1),
+            (self.num_node, num_hyperedges),
             device= self.device
         )
-        A = (sparse @ sparse.T).to_dense()
-        A = A.where(A == 0, 1)#Clique expansion
+        
+        # Compute sparse adjacency matrix A = sparse @ sparse.T (keeps it sparse)
+        A_sparse = torch.sparse.mm(sparse, sparse.t())
+        # Coalesce and get indices where A > 0 (nodes that share hyperedges)
+        A_sparse = A_sparse.coalesce()
+        edges = A_sparse.indices().t()  # Get non-zero edges
+        
         degrees = sparse.sum(dim=0).to_dense().flatten()
-        edges = A.nonzero()
         generated_hyperedges_count = 0
         generated_hyperedges = []
         unique_hyperedges = torch.unique(edge_index[1])
+        
         for i in range(unique_hyperedges.shape[0]):
             while True:
                 degree = degrees[torch.randint(0, degrees.shape[0], (1,))].item()
+                if degree == 0 or edges.shape[0] == 0:
+                    degree = max(2, int(degrees.float().mean().item()))
+                
+                # Start with a random edge
                 f = edges[torch.randint(0, edges.shape[0], (1,))].flatten()
+                
                 while f.shape[0] < degree:
-                    probabilities = A[f].sum(dim = 0)
-                    probabilities[f] = 0
-                    probabilities = torch.where(probabilities == 1, 1., 0.)
-                    if probabilities.sum() == 0:
+                    # Find nodes connected to current motif
+                    # Use sparse indexing to find neighbors
+                    mask = (edges[:, 0].unsqueeze(1) == f.unsqueeze(0)).any(dim=1)
+                    potential_nodes = edges[mask].flatten().unique()
+                    
+                    # Remove already selected nodes
+                    potential_nodes = potential_nodes[~torch.isin(potential_nodes, f)]
+                    
+                    if potential_nodes.shape[0] == 0:
                         break
-                    probabilities /= probabilities.sum()
-                    f = torch.cat([
-                        f,
-                        torch.multinomial(probabilities, 1)
-                    ])
-                if f.shape[0] < degree:
-                    continue
-                break
+                    
+                    # Uniform sampling from potential nodes
+                    new_node = potential_nodes[torch.randint(0, potential_nodes.shape[0], (1,))]
+                    f = torch.cat([f, new_node])
+                
+                if f.shape[0] >= 2:  # At least 2 nodes for a valid hyperedge
+                    break
+            
             generated_hyperedges.append(torch.vstack([
                 f,
-                torch.full((1, f.shape[0]),generated_hyperedges_count, device = self.device)
+                torch.full((1, f.shape[0]), generated_hyperedges_count, device = self.device)
             ]))
             generated_hyperedges_count += 1
         
@@ -197,41 +213,65 @@ class CliqueHypergraphNegativeSampler(HypergraphNegativeSampler):
         return self
     
     def generate(self, edge_index: torch.Tensor) -> HypergraphNegativeSamplerResult:
+        num_hyperedges = edge_index[1].max().item() + 1
         sparse = torch.sparse_coo_tensor(
             edge_index,
             torch.ones(edge_index.shape[1], device = self.device),
-            (self.num_node, edge_index.max().item() + 1),
+            (self.num_node, num_hyperedges),
             device= self.device
         )
 
-        A = (sparse @ sparse.T).to_dense()
-
+        # Compute sparse adjacency matrix
+        A_sparse = torch.sparse.mm(sparse, sparse.t()).coalesce()
+        
         generated_hyperedges_count = 0
         generated_hyperedges = []
         unique_edges = torch.unique(edge_index[1])
+        
         for i in range(unique_edges.shape[0]):
             while True:
                 #Randomly sample an hyperedge
                 hyperedge = unique_edges[torch.randint(0, unique_edges.shape[0], (1,))]
                 nodes = edge_index[0, edge_index[1] == hyperedge] #Get the nodes in the hyperedge
-                #Randomly sample a node for removal
-                hyperedge_mask = torch.zeros(nodes.shape[0], dtype = torch.bool, device = self.device)
-                hyperedge_mask[0] = True #Randomly sample a node for removal
-                p = aggr.MulAggregation()(
-                    A[nodes[~hyperedge_mask]],
-                    torch.zeros(hyperedge_mask.sum().item(), dtype = torch.int64,device = self.device)
-                ).flatten()
-                p[nodes] = 0
-                p = p.where(p == 0, 1)
-                if p.sum() == 0:
+                
+                if nodes.shape[0] < 2:
                     continue
-                p /= p.sum()
-                generated_hyperedges.append(torch.vstack([
-                    torch.hstack([nodes[~hyperedge_mask], torch.multinomial(p,1)]),
-                    torch.full((1, nodes.shape[0]),generated_hyperedges_count, device= self.device)
-                ]))
-                generated_hyperedges_count += 1
-                break
+                
+                #Randomly sample a node for removal
+                remove_idx = torch.randint(0, nodes.shape[0], (1,))
+                hyperedge_mask = torch.ones(nodes.shape[0], dtype = torch.bool, device = self.device)
+                hyperedge_mask[remove_idx] = False
+                
+                remaining_nodes = nodes[hyperedge_mask]
+                
+                # Find candidate nodes: get all neighbors of remaining nodes
+                candidate_nodes = []
+                for node in remaining_nodes:
+                    # Get nodes connected to this node via A_sparse
+                    mask = A_sparse.indices()[0] == node
+                    neighbors = A_sparse.indices()[1][mask]
+                    candidate_nodes.append(neighbors)
+                
+                if len(candidate_nodes) > 0:
+                    all_candidates = torch.cat(candidate_nodes).unique()
+                    # Remove nodes already in hyperedge
+                    all_candidates = all_candidates[~torch.isin(all_candidates, nodes)]
+                    
+                    if all_candidates.shape[0] > 0:
+                        # Randomly select one candidate
+                        new_node = all_candidates[torch.randint(0, all_candidates.shape[0], (1,))]
+                        new_hyperedge = torch.cat([remaining_nodes, new_node])
+                        
+                        generated_hyperedges.append(torch.vstack([
+                            new_hyperedge,
+                            torch.full((1, new_hyperedge.shape[0]), generated_hyperedges_count, device= self.device)
+                        ]))
+                        generated_hyperedges_count += 1
+                        break
+                    else:
+                        continue
+                else:
+                    continue
         return HypergraphNegativeSamplerResult(
             self,
             edge_index,

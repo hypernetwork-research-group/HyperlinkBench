@@ -24,6 +24,7 @@ requires-python = ">=3.9"
 
 [project.scripts]
 pipeline = "hyperbench.pipelines.pipeline:execute"
+pipeline_with_batch = "hyperbench.pipelines.pipeline_with_batch:execute"
 
 [project.urls]
 Homepage = "https://www.isislab.it/"

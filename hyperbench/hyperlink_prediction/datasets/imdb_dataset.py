@@ -67,7 +67,10 @@ class CHLPBaseDataset(DatasetHyperGraph, ABC):
                 for l in line.split():
                     edge_index[0].append(int(l))
                     edge_index[1].append(i)
+        print("i : ", i, flush=True)
         edge_index = torch.tensor(edge_index, dtype=torch.long)
+        print("num hyperedges ", edge_index[1].max().item() + 1, flush=True)
+
         with open(self.raw_dir + "/node_embeddings.pkl", "rb") as f:
             node_embeddings = torch.tensor(pickle.load(f))
         with open(self.raw_dir + "/hyperedge_embeddings.pkl", "rb") as f:
@@ -105,7 +108,7 @@ class CHLPBaseDataset(DatasetHyperGraph, ABC):
 
 class IMDBHypergraphDataset(CHLPBaseDataset):
     
-    GDRIVE_ID = "1D-dqEmkOfOVy6w0ZfrLtJrPw-dibwJ3V"
+    GDRIVE_ID = "1ghUYiyNDvbSF4VKhgMS0akjSL0Wei0uU"
     DATASET_NAME = "IMDB"
 
 class ARXIVHypergraphDataset(CHLPBaseDataset):

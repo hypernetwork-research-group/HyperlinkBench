@@ -10,8 +10,8 @@ class Experiment:
         self.config = config
 
     def run(self):
-        for _ in range(self.config['num_trials']):
-            for dataset_name in self.config['dataset_list']:
+        for dataset_name in self.config['dataset_list']:
+            for _ in range(self.config['num_trials']):
                 for hlp_method in self.config['hlp_methods_list']:
                     for negative_sampler in self.config['negative_samplers_list']:
                         if self.config['random_seed'] is None:
@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Run experiments with different HLP methods and negative samplers.")
     parser.add_argument('-n', '--num_trials', type=int, default=1, help='Number of trials to run for each configuration.')
-    parser.add_argument('-d', '--datasets_list', type=str, nargs='*', default=['COURSERA'], choices=['COURSERA', 'IMDB'], help='Name of the dataset to use. Available options: COURSERA, IMDB.')
+    parser.add_argument('-d', '--datasets_list', type=str, nargs='*', default=['ARXIV'], choices=['COURSERA', 'IMDB', 'ARXIV'], help='Name of the dataset to use. Available options: COURSERA, IMDB.')
     parser.add_argument('-hlp', '--hlp_methods_list', type=str, nargs='*', default=['CommonNeighbors'], help='List of HLP methods to evaluate. Default is CommonNeighbors.')
     parser.add_argument('-neg', '--negative_samplers_list', type=str, nargs='*', default=['MotifHypergraphNegativeSampler', 'CliqueHypergraphNegativeSampler'], help='List of negative sampling methods to evaluate. Default includes MotifHypergraphNegativeSampler and CliqueHypergraphNegativeSampler.')
     parser.add_argument('-o', '--output_path', type=str, default="./results", help='Path to save the output results.')
