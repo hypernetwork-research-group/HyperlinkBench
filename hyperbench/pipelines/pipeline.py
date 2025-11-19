@@ -4,13 +4,17 @@ def execute():
     parser = argparse.ArgumentParser(description="Insert dataset_name, insert negative_sampling method")
     parser.add_argument('--dataset_name', type=str, help="The dataset's name, possible dataset's name: \nIMDB,\nCOURSERA,\nARXIV", required=True)
     parser.add_argument('--negative_sampling', type=str, help="negative sampling method to use, possible methods: \n SizedHypergraphNegativeSampler,\nMotifHypergraphNegativeSampler,\nCliqueHypergraphNegativeSampler", required=True)
-    parser.add_argument('--hlp_method', type=str, help="hyperlink prediction method to use, possible method: \nCommonNeighbors", required=True)
+    parser.add_argument('--alpha', type= float, help="first parameter for the method SizedNegativeSampler", default=0.5)
+    parser.add_argument('--beta', type= int, help="second parameter for the method SizedNegativeSampler", default=1)
+    parser.add_argument('--hlp_method', type=str, help="hyperlink prediction method to use, possible methods: \nCommonNeighbors,\nNeuralHP, \nFactorizationMachine", required=True)
     parser.add_argument('--output_path', type=str, help="Path to save the results", default="./results")
     parser.add_argument('--random_seed', type=int, help="Random seed for reproducibility", default=None)
     parser.add_argument('--test', type=bool, help="If true, runs in test mode", default=False)
     args = parser.parse_args()
     dataset_name= args.dataset_name
     negative_method = args.negative_sampling
+    alpha = args.alpha
+    beta = args.beta
     hlp_method = args.hlp_method
     output_path = args.output_path
     random_seed = args.random_seed
@@ -24,8 +28,7 @@ def execute():
     import time
     from random import randint, seed
     from ..hyperlink_prediction.loader.dataloader import DatasetLoader
-    from ..hyperlink_prediction.models.hyperlink_prediction_algorithm import CommonNeighbors
-    from ..utils.data_and_sampling_selector import setNegativeSamplingAlgorithm, select_dataset
+    from ..utils.data_and_sampling_selector import setNegativeSamplingAlgorithm, select_dataset, setHyperlinkPredictionAlgorithm
     from ..utils.hyperlink_train_test_split import train_test_split
     from torch_geometric.nn import HypergraphConv
     from tqdm.auto import trange, tqdm
@@ -82,7 +85,9 @@ def execute():
 
     loader = DatasetLoader(
         train_dataset, 
-        negative_method, 
+        negative_method,
+        alpha,
+        beta,
         dataset._data.num_nodes,
         batch_size=4000, 
         shuffle=True, 
@@ -160,7 +165,7 @@ def execute():
     criterion = torch.nn.BCEWithLogitsLoss()
     test_criterion = torch.nn.BCELoss()
 
-    negative_hypergraph = setNegativeSamplingAlgorithm(negative_method, test_dataset._data.num_nodes).generate(test_dataset._data.edge_index)
+    negative_hypergraph = setNegativeSamplingAlgorithm(negative_method, test_dataset._data.num_nodes, alpha, beta).generate(test_dataset._data.edge_index)
     edge_index_test = test_dataset._data.edge_index.clone()
     test_dataset.y = torch.vstack((
         torch.ones((test_dataset._data.edge_index[1].max() + 1, 1)),
@@ -174,16 +179,16 @@ def execute():
         y = test_dataset.y,
         num_nodes = test_dataset._data.num_nodes
     )
+    print(test_dataset_.edge_attrs)
 
+    hlp_method = setHyperlinkPredictionAlgorithm(hlp_method)
     for epoch in trange(150):
         model.train()
         optimizer.zero_grad()
         for i, h in tqdm(enumerate(loader), leave = False):
-            h = h
-            negative_sampler = setNegativeSamplingAlgorithm(negative_method, h.num_nodes)
+            negative_sampler = setNegativeSamplingAlgorithm(negative_method, h.num_nodes, alpha, beta)
             negative_test = negative_sampler.generate(h.edge_index)
-
-            hlp_method = CommonNeighbors(h.num_nodes)
+            hlp_method.X = h.x
             hlp_result = hlp_method.predict(negative_test.edge_index)
 
             y_pos = torch.ones(hlp_result.edge_index.size(1), 1)

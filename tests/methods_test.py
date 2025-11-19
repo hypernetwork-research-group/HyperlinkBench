@@ -4,13 +4,13 @@ import subprocess
 def dataset_dict():
     datasets = {}
     dataset_arb = [
-        "coauth-DBLP",
-        "coauth-MAG-Geology",
+        #"coauth-DBLP",
+        #"coauth-MAG-Geology",
         "email-Enron",
-        "tags-math-sx",
+        #"tags-math-sx",
         "contact-high-school",
-        "contact-primary-school",
-        "NDC-substances"
+        #"contact-primary-school",
+        #"NDC-substances"
     ]
     datasets_CHLP = [
         "IMDB",
@@ -22,7 +22,11 @@ def dataset_dict():
         "MotifHypergraphNegativeSampler",
         "CliqueHypergraphNegativeSampler"
     ]
-    hlp_methods = ["CommonNeighbors"] 
+    hlp_methods = [
+        "CommonNeighbors",
+        "NeuralHP",
+        "FactorizationMachine"
+        ] 
 
     ns_hlp_union = []
     for ns in negative_methods:
