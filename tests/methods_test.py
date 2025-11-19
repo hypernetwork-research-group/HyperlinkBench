@@ -4,18 +4,18 @@ import subprocess
 def dataset_dict():
     datasets = {}
     dataset_arb = [
-        'coauth-DBLP',
-        # "coauth-MAG-Geology",
-        # "email-Enron",
-        # "tags-math-sx",
-        # "contact-high-school",
-        # "contact-primary-school",
-        # "NDC-substances"
+        "coauth-DBLP",
+        "coauth-MAG-Geology",
+        "email-Enron",
+        "tags-math-sx",
+        "contact-high-school",
+        "contact-primary-school",
+        "NDC-substances"
     ]
     datasets_CHLP = [
-        #"IMDB",
+        "IMDB",
         "COURSERA",
-        #"ARXIV"
+        "ARXIV"
     ]
     negative_methods = [
         "SizedHypergraphNegativeSampler",
@@ -48,6 +48,7 @@ def create_pipelines_comand():
                 f"--dataset_name {dataset_name} "
                 f"--hlp_method {hlp} "
                 f"--negative_sampling {ns}"
+                f" --test True"
             )
             pipelines.append(cmd)
     

@@ -110,7 +110,7 @@ class IMDBHypergraphDataset(CHLPBaseDataset):
 
 class ARXIVHypergraphDataset(CHLPBaseDataset):
     
-    GDRIVE_ID = "1nGkihnayNx4PskOHqiqwUYcYoGF3t-1H"
+    GDRIVE_ID = "1pXRgFzVKIC-WtSslapAEPf9KlerTFhnd"
     DATASET_NAME = "ARXIV"
 
 class COURSERAHypergraphDataset(CHLPBaseDataset):

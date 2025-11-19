@@ -7,12 +7,14 @@ def execute():
     parser.add_argument('--hlp_method', type=str, help="hyperlink prediction method to use, possible method: \nCommonNeighbors", required=True)
     parser.add_argument('--output_path', type=str, help="Path to save the results", default="./results")
     parser.add_argument('--random_seed', type=int, help="Random seed for reproducibility", default=None)
+    parser.add_argument('--test', type=bool, help="If true, runs in test mode", default=False)
     args = parser.parse_args()
     dataset_name= args.dataset_name
     negative_method = args.negative_sampling
     hlp_method = args.hlp_method
     output_path = args.output_path
     random_seed = args.random_seed
+    test = args.test
 
     import torch
     import numpy as np
@@ -53,10 +55,25 @@ def execute():
         unique, inverse = data.edge_index[1].unique(return_inverse = True)
         data.edge_attr = data.edge_attr[unique]
         data.edge_index[1] = inverse
-
         return data
     
     dataset = select_dataset(dataset_name, pre_transform= pre_transform)
+    if test:
+        reduction = min(1000, dataset._data.num_edges)
+        edge_index = dataset._data.edge_index[:, :reduction].clone()
+        edge_attr = dataset._data.edge_attr[:reduction].clone()
+        nodes_present = torch.unique(edge_index[0]).sort()[0]
+        num_nodes = edge_index.max().item() + 1
+        mapping = -torch.ones(num_nodes, dtype=torch.long)
+        mapping[nodes_present] = torch.arange(len(nodes_present))
+        edge_index = mapping[edge_index]
+        test_data = HyperGraphData(
+            x=dataset._data.x[nodes_present].clone(),
+            edge_index=edge_index,
+            edge_attr=edge_attr.clone(),
+            num_nodes=len(nodes_present),
+        )
+        dataset._data = test_data
 
     test_size = 0.2
     val_size = 0.0
@@ -84,8 +101,8 @@ def execute():
             self.activation = nn.LeakyReLU()
             self.in_norm = nn.LayerNorm(in_channels)
             self.in_proj = nn.Linear(in_channels, hidden_channels)
-            self.e_proj = nn.Linear(in_channels, hidden_channels)
-            self.e_norm = nn.LayerNorm(in_channels)
+            self.e_proj = None
+            self.e_norm = None
 
             for i in range(num_layers):
                 setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
@@ -108,8 +125,13 @@ def execute():
             x = self.in_proj(x)
             x = self.activation(x)
             x = self.dropout(x)
+            if self.e_norm is None:
+                self.e_norm = nn.LayerNorm(x_e.size(-1)).to(x_e.device)
 
+            x_e = x_e.to(dtype=self.e_norm.weight.dtype, device=self.e_norm.weight.device)
             x_e = self.e_norm(x_e)
+            if self.e_proj is None:
+                self.e_proj = nn.Linear(x_e.size(-1), self.in_proj.out_features).to(x_e.device)
             x_e = self.e_proj(x_e)
             x_e = self.activation(x_e)
             x_e = self.dropout(x_e)
@@ -138,7 +160,7 @@ def execute():
     criterion = torch.nn.BCEWithLogitsLoss()
     test_criterion = torch.nn.BCELoss()
 
-    negative_hypergraph = setNegativeSamplingAlgorithm(negative_method,test_dataset.x.__len__()).generate(test_dataset._data.edge_index)
+    negative_hypergraph = setNegativeSamplingAlgorithm(negative_method, test_dataset._data.num_nodes).generate(test_dataset._data.edge_index)
     edge_index_test = test_dataset._data.edge_index.clone()
     test_dataset.y = torch.vstack((
         torch.ones((test_dataset._data.edge_index[1].max() + 1, 1)),
